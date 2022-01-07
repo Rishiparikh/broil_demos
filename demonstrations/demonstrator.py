@@ -23,6 +23,7 @@ from gym.spaces import Box
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import random
+from PIL import Image
 
 from spinup.envs.pointbot_const import *
 
@@ -46,13 +47,14 @@ class LineBuilder:
         self.actions = []
         self.cid = line.figure.canvas.mpl_connect('button_press_event', self)
         self.info = fig.canvas.mpl_connect('key_press_event', self.press)
+        self.transitions = []
+        self.obs = None
+        self.counter = 0
 
     def press(self, event):
         sys.stdout.flush()
-        if event.key == 'v':
-            print("X_v: ", str(self.env.state[1]), " Y_v: ", str(self.env.state[3]), " Action: ", str(self.env.curr_action))
         if event.key == 'p':
-            print("X: ", str(self.env.state[0]), " Y: ", str(self.env.state[2]))
+            print("X: ", str(self.env.state[0]), " Y: ", str(self.env.state[1]))
         if event.key == 'w':
             print("Most recent state: ", str(self.states[-1]), "\n states: ", str(self.states))
         if event.key == 't':
@@ -67,17 +69,18 @@ class LineBuilder:
                 plt.savefig('demonstrations/visualization_' + self.typ + "_" + str(args.dem_num) + '.png')
                 plt.close()
             else:
-                if np.linalg.norm(np.subtract(GOAL_STATE, self.states[-1][:4])) <= GOAL_THRESH:
-                    plt.savefig('demonstrations/visualization_' + self.typ + "_" + str(args.dem_num) + '.png')
-                    plt.close()
-                else:
-                    print("\nNot proper ending! X distance from END: " + str(self.xs[-1] - END_POS[0]) + " Y distance from END: " + str(self.ys[-1] - END_POS[1]))
+                return
+                # if np.linalg.norm(np.subtract(GOAL_STATE, self.states[-1][:4])) <= GOAL_THRESH:
+                #     plt.savefig('demonstrations/visualization_' + self.typ + "_" + str(args.dem_num) + '.png')
+                #     plt.close()
+                # else:
+                #     print("\nNot proper ending! X distance from END: " + str(self.xs[-1] - END_POS[0]) + " Y distance from END: " + str(self.ys[-1] - END_POS[1]))
         if event.key == 'r':
             if (os.path.exists("demonstrations/states_" + str(args.dem_num) + ".txt")):
                 os.remove("demonstrations/states_" + str(args.dem_num) + ".txt")
         if event.key == 'g':
             if event.inaxes!=self.line.axes: return
-            
+
             if self.steps == HORIZON:
                 plt.savefig('demonstrations/visualization_' + self.typ + "_" + str(args.dem_num) + '.png')
                 plt.close()
@@ -94,7 +97,7 @@ class LineBuilder:
             x_f = diff_x
             y_f = diff_y
 
-            
+            print(diff_x)
             if diff_x >= 0 and diff_y >= 0:
                 if abs(diff_x) >= abs(diff_y):
                     x_f = abs(diff_x/diff_x) * MAX_FORCE/10
@@ -128,19 +131,21 @@ class LineBuilder:
                     y_f = -abs(diff_y/diff_y) * MAX_FORCE/10
 
             act = tuple((x_f, y_f))
-            new_state, _, _, _ = self.env.step(act)
+            _, _, _, state = self.env.step(act)
+            new_state = state["next_state"]
             self.actions.append(self.env.curr_action)
 
             if TRASH:
                 plt.scatter([self.env.next_trash[0]],[self.env.next_trash[1]], [20], '#000000')
 
             self.xs.append(new_state[0])
-            self.ys.append(new_state[2])
+            self.ys.append(new_state[1])
             self.steps += 1
             self.xv.append(new_state[1])
             self.yv.append(new_state[3])
             self.states.append(new_state)
             self.line.set_data(self.xs, self.ys)
+            print(self.line)
             self.line.figure.canvas.draw()
 
     def __call__(self, event):
@@ -149,6 +154,7 @@ class LineBuilder:
             plt.savefig('demonstrations/visualization_' + self.typ + "_" + str(args.dem_num) + '.png')
             plt.close()
             return
+
         final_x = event.xdata
         final_y = event.ydata
         init_x = self.xs[-1]
@@ -160,7 +166,6 @@ class LineBuilder:
         x_f = diff_x
         y_f = diff_y
 
-        
         if diff_x >= 0 and diff_y >= 0:
             if abs(diff_x) >= abs(diff_y):
                 x_f = abs(diff_x/diff_x) * MAX_FORCE
@@ -194,39 +199,46 @@ class LineBuilder:
                 y_f = -abs(diff_y/diff_y) * MAX_FORCE
 
         act = tuple((x_f, y_f))
-        new_state, _, _, _ = self.env.step(act)
-        self.actions.append(self.env.curr_action)
-
-        if TRASH:
-            plt.scatter([self.env.next_trash[0]],[self.env.next_trash[1]], [20], '#000000')
+        next_obs, reward, done, info = self.env.step(act)
+        transition = {'obs': info['next_state'], 'action': act, 'reward': float(reward),
+                      }
+        # print({k: v.dtype for k, v in transition.items() if 'obs' in k})
+        state = info['next_state']
+        self.obs = next_obs
+        new_state = state
         self.xs.append(new_state[0])
-        self.ys.append(new_state[2])
-
+        self.ys.append(new_state[1])
         self.steps += 1
-        self.xv.append(new_state[1])
-        self.yv.append(new_state[3])
         self.states.append(new_state)
         self.line.set_data(self.xs, self.ys)
         self.line.figure.canvas.draw()
+        im = self.env.render()
+        im = Image.fromarray(im, 'RGB')
+        # plt.imshow(im)
+        # plt.show()
+        im.save("./demonstrations/demos/image_{}.png".format(self.counter))
+        self.counter += 1
+        self.transitions.append(transition)
 
 def init(typ="Good"):
-    env = gym.make('PointBot-v0')
+    env = gym.make('PointBot-v1')
     env.reset()
     fig = plt.figure()
     ax = fig.add_subplot()
     ax.set_title('PointBot Env '+ typ +' Demonstrator')
-    line, = ax.plot([env.state[0]], env.state[2])  # empty line
+    line, = ax.plot([env.state[0]], env.state[1])  # empty line
     linebuilder = LineBuilder(line, env, fig, typ)
-    num_obst = len(env.obstacle.obs)
-    for i in range(num_obst):
-        xbound = env.obstacle.obs[i].boundsx
-        ybound = env.obstacle.obs[i].boundsy
-        rect = patches.Rectangle((xbound[0],ybound[0]),abs(xbound[1] - xbound[0]),abs(ybound[1] - ybound[0]),linewidth=1, zorder = 0, edgecolor='#d3d3d3',facecolor='#d3d3d3', fill = True)
-        ax.add_patch(rect)
+    # num_obst = len(env.obstacle.obs)
+    # for i in range(num_obst):
+    #     xbound = env.obstacle.obs[i].boundsx
+    #     ybound = env.obstacle.obs[i].boundsy
+    #     rect = patches.Rectangle((xbound[0],ybound[0]),abs(xbound[1] - xbound[0]),abs(ybound[1] - ybound[0]),linewidth=1, zorder = 0, edgecolor='#d3d3d3',facecolor='#d3d3d3', fill = True)
+    #     ax.add_patch(rect)
+
     if TRASH:
         plt.scatter([env.next_trash[0]],[env.next_trash[1]], [25], '#000000')
 
-    ax.scatter([env.state[0]],[env.state[2]],  [5], '#00FF00')
+    ax.scatter([env.state[0]],[env.state[1]],  [5], '#00FF00')
     if not TRASH:
         ax.scatter([END_POS[0]],[END_POS[1]],  [5], '#FF0000')
 
@@ -236,10 +248,11 @@ def init(typ="Good"):
     return linebuilder
 
 def end(linebuilder, typ="Good"):
+    feature_length = 0 #sum(linebuilder.env.feature)
+    linebuilder.env.draw(trajectories=linebuilder.transitions, show=True)
     if TRASH:
-        feature_length = sum(linebuilder.env.feature)
         for _ in range(HORIZON-feature_length):
-            next_state = [linebuilder.env.state[0], 0, linebuilder.env.state[2], 0] + NOISE_SCALE * np.random.randn(4)
+            next_state = [linebuilder.env.state[0], 0, linebuilder.env.state[1], 0] + NOISE_SCALE * np.random.randn(4)
             next_state = np.concatenate((next_state, linebuilder.env.closest_trash(linebuilder.env.state)))
             linebuilder.states.append(next_state)
             linebuilder.actions.append([0, 0])
@@ -249,19 +262,17 @@ def end(linebuilder, typ="Good"):
 
     if not os.path.exists('demonstrations'):
         os.makedirs('demonstrations')
-    
+
     try:
         f = open("demonstrations/states_" + str(args.dem_num) + ".txt", "a")
-        f.write("\n" + typ)
-        f.write("\nFeature: " + str(linebuilder.env.feature))
-        f.write("\n\nStates: " + str(linebuilder.states))
-        f.write("\n\nActions: " + str(linebuilder.actions))
-        if TRASH:
-            f.write("\n\nTrash Locations: "+ str(linebuilder.env.current_trash_taken))
+        # f.write("\n" + typ)
+        # f.write("\nFeature: " + str(linebuilder.env.feature))
+        f.write("\n\nStates: " + str(linebuilder.transitions))
         f.close()
-        return linebuilder.env.feature, linebuilder.states, linebuilder.actions
-    except AssertionError as msg:  
-        print(msg) 
+        # return linebuilder.env.feature, linebuilder.states, linebuilder.actions
+        return None
+    except AssertionError as msg:
+        print(msg)
         return None
 
 
