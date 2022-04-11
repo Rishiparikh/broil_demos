@@ -44,12 +44,15 @@ class LineBuilder:
         self.steps = 0
         self.state = env.state
         self.states = [self.state]
+        self.observations = []
         self.actions = []
         self.cid = line.figure.canvas.mpl_connect('button_press_event', self)
         self.info = fig.canvas.mpl_connect('key_press_event', self.press)
         self.transitions = []
         self.obs = None
         self.counter = 0
+        self.steps_in_goal = 0
+        self.steps_in_obs = 0
 
     def press(self, event):
         sys.stdout.flush()
@@ -213,7 +216,12 @@ class LineBuilder:
         self.line.set_data(self.xs, self.ys)
         self.line.figure.canvas.draw()
         im = self.env.render()
+        self.observations.append(im)
         im = Image.fromarray(im, 'RGB')
+        if reward == 0:
+            self.steps_in_goal += 1
+        if reward == -10:
+            self.steps_in_obs += 1
         # plt.imshow(im)
         # plt.show()
         im.save("./demonstrations/demos/image_{}.png".format(self.counter))
@@ -269,8 +277,8 @@ def end(linebuilder, typ="Good"):
         # f.write("\nFeature: " + str(linebuilder.env.feature))
         f.write("\n\nStates: " + str(linebuilder.transitions))
         f.close()
-        # return linebuilder.env.feature, linebuilder.states, linebuilder.actions
-        return None
+        print(linebuilder.observations[0].shape, len(linebuilder.observations))
+        return linebuilder.observations, linebuilder.actions, linebuilder.steps_in_obs, linebuilder.steps_in_goal
     except AssertionError as msg:
         print(msg)
         return None
@@ -284,17 +292,18 @@ if __name__ == '__main__':
     parser.add_argument('--single', type=bool, default=False)
     args = parser.parse_args()
 
-    if args.single:
+    if True:
         linebuilder = init("Optimal")
-        feature, states, actions = end(linebuilder, "Optimal")
+        states, actions, steps_in_obs, steps_in_goal = end(linebuilder, "Optimal")
+        print(steps_in_obs, steps_in_goal)
 
-        dic = {"feature": feature,  "states": states, "actions": actions}
+        dic = {"states": states, "actions": actions, "steps_in_obs": steps_in_obs, "steps_in_goal": steps_in_goal}
         p = open("demonstrations/features_states_actions_" + str(args.dem_num) + ".pkl", "wb")
         pickle.dump(dic, p)
         p.close()
     else:
         linebuilder = init()
-        good_feature, good_states, good_actions = end(linebuilder)
+        good_states, good_actions = end(linebuilder)
 
         linebuilder = init("Bad")
         bad_feature, bad_states, bad_actions = end(linebuilder, "Bad")

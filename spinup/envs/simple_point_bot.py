@@ -17,12 +17,14 @@ from PIL import Image, ImageDraw
 from skimage.transform import resize
 import math
 
+import random
+
 """
 Constants associated with the PointBot env.
 """
 
-WINDOW_WIDTH = 180
-WINDOW_HEIGHT = 150
+WINDOW_WIDTH = 64
+WINDOW_HEIGHT = 64
 
 MAX_FORCE = 3
 
@@ -31,8 +33,8 @@ class SimplePointBot(Env, utils.EzPickle):
 
     def __init__(self, from_pixels=True,
                  walls=None,
-                 start_pos=(30, 75),
-                 end_pos=(150, 75),
+                 start_pos=(10, 32),
+                 end_pos=(54, 32),
                  horizon=100,
                  constr_penalty=-100,
                  goal_thresh=3,
@@ -47,7 +49,7 @@ class SimplePointBot(Env, utils.EzPickle):
         self.constr_penalty = constr_penalty
         self.action_space = Box(-np.ones(2) * MAX_FORCE,
                                 np.ones(2) * MAX_FORCE)
-        self.grid = [0, 200, 0, 200]
+        self.grid = [0, 64, 0, 64]
 
         if from_pixels:
             self.observation_space = Box(-1, 1, (3, 64, 64))
@@ -57,7 +59,7 @@ class SimplePointBot(Env, utils.EzPickle):
         self._episode_steps = 0
         # self.obstacle = self._complex_obstacle(OBSTACLE_COORDS)
         if walls is None:
-            walls = [((75, 55), (100, 95))]
+            walls = [((26, 22), (38, 42))]
         self.walls = [self._complex_obstacle(wall) for wall in walls]
         self.wall_coords = walls
         self._from_pixels = from_pixels
@@ -115,16 +117,15 @@ class SimplePointBot(Env, utils.EzPickle):
 
         im = Image.new("RGB", (WINDOW_WIDTH, WINDOW_HEIGHT), BCKGRND_COLOR)
         draw = ImageDraw.Draw(im)
-
-        draw_circle(draw, state, 10, ACTOR_COLOR)
         for wall in self.wall_coords:
             draw.rectangle(wall, fill=OBSTACLE_COLOR, outline=(0, 0, 0), width=1)
+        draw_circle(draw, state, 5, ACTOR_COLOR)
 
         return np.array(im)
 
     def _next_state(self, s, a, override=False):
-        if self.obstacle(s):
-            return s
+        # if self.obstacle(s):
+        #     return s
 
         next_state = s + a + self.noise_scale * np.random.randn(len(s))
         next_state = np.clip(next_state, (0, 0), (WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -134,6 +135,9 @@ class SimplePointBot(Env, utils.EzPickle):
         """
         Returns -1 if not in goal otherwise 0
         """
+        if self.obstacle(s):
+            return -10
+
         return int(np.linalg.norm(np.subtract(self.end_pos, s)) < self.goal_thresh) - 1
 
     def obstacle(self, s):
@@ -268,8 +272,8 @@ class SimplePointBotLong(SimplePointBot):
         super().__init__(from_pixels,
                          start_pos=(15, 20),
                          end_pos=(165, 20),
-                         walls=[((80, 55), (100, 150)),
-                                ((30, 0), (45, 100)),
-                                ((30, 120), (45, 150)),
-                                ((135, 0), (150, 120))],
+                         walls=[((28, 23), (36, 30)),
+                                ((11, 0), (16, 43)),
+                                ((11, 51), (16, 64)),
+                                ((48, 0), (53, 51))],
                          horizon=500)
